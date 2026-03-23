@@ -14,7 +14,7 @@
  Terms are denoted by t1, t2, etc and defined inductively
 )
 
--- ============== VARIABLES ==============
+--- ============== VARIABLES ==============
 fmod VAR is
   pr NAT .
   sort Var .
@@ -147,9 +147,9 @@ fmod FORMULA is
     eq FV(forall[v]{A}) = FV(A) \ v .
     eq FV(exists[v]{A}) = FV(A) \ v .
 
-    --- variable occurs free in a formula
-    op free : Var Formula -> Bool .
-    eq free(v, A) = not (v in FV(A)) .
+    --- variable occurs fresh in a formula
+    op fresh : Var Formula -> Bool .
+    eq fresh(v, A) = not (v in FV(A)) .
 
     --- substitution in a formula
     --- read "A[t/v]" as "substitute t for v in A" .
@@ -180,35 +180,47 @@ fmod CONTEXT is
      sort NeContext Context .
      subsort Formula < NeContext < Context .
 
-     op empty : -> Context [ctor] .
-     op _,_ : Context Context -> Context [ctor assoc comm id: empty format (d d s d)] .
-     op _,_ : NeContext Context -> NeContext [ctor assoc comm id: empty format (d d s d)] .
-     op _,_ : Context NeContext -> NeContext [ctor assoc comm id: empty format (d d s d)] .
+     op emptyC : -> Context [ctor] .
+     op _,_ : Context Context -> Context [ctor assoc comm id: emptyC format (d d s d)] .
+     op _,_ : NeContext Context -> NeContext [ctor assoc comm id: emptyC format (d d s d)] .
+     op _,_ : Context NeContext -> NeContext [ctor assoc comm id: emptyC format (d d s d)] .
+
+     vars A B : Formula .
+     var G : Context .
+     var v : Var .
+
+     --- free variables in a context
+     op FV : Context -> VarSet .
+     eq FV(emptyC) = empty .
+     eq FV(A) = FV(A) .
+     eq FV(A, B) = FV(A), FV(B) .
+
+     --- freshness of a variable for a context
+     op fresh : Var Context -> Bool .
+     eq fresh(v, G) = not (v in FV(G)) .
 endfm
 
 --- =============== SEQUENT ===============
 --- A sequent in G3c, which is multisuccedent is
 --- 'G |-- D' where G and D are contexts
 
-protecting CONTEXT .
+fmod SEQUENT is
+  protecting CONTEXT .
 
-sorts Sequent SSequent .
-subsort Sequent < SSequent .
+  sorts Sequent SSequent .
+  subsort Sequent < SSequent .
 
-op _|--{_}_ : Context Nat Context -> Sequent [ctor prec 122] .
+  op proved : -> SSequent [ctor] .
+  op _|--{_}_ : Context Nat Context -> Sequent [ctor prec 122] .
 
-view Sequent from TRIV to SEQUENT is
-  sort Elt to Sequent .
-endv
+  op _||_ : SSequent SSequent -> SSequent [ctor assoc comm id: proved] .
 
-pr BAG{Sequent} *
-  ( sort Bag{Sequent} to SSequent ,
-    sort NeBag{Sequent} to NESSequent ,
-    op empty to proved ) .
+  --- idempotency to make this a set
+  var S : Sequent .
+  eq S || S = S .
+endfm
 
 --- =============== RULES ===============
---- id, and-l, or-l, impl-l, bot-l, and-r, or-r, impl-r
---- (and for FOL) forall-l, forall-r, exists-l, exists-r
 
 mod G3C is
     protecting SEQUENT .
@@ -252,28 +264,29 @@ mod G3C is
     --- will not work since t is used before being bound
     --- unless we put a condition using t?
 
-    rl [forall-l] : forall[v]{A}, G |--{i} D => (A[t / v]), forall[v]{A}, G |--{i} D .
+    rl [forall-l] : (forall[v]{A}, G) |--{i} D => ((A[t / v]), forall[v]{A}, G) |--{i} D .
 
-                  --- TODO: can write a nondeterministic rule if t,SET := possible(i)
-                  --- possible(i) gives x0 ... xi, so only for variables i created
-                  --- might do strategies
+    --- TODO: can write a nondeterministic rule if t,SET := possible(i)
+    --- possible(i) gives x0 ... xi, so only for variables i created
+    --- TODO: might do strategies
 
-    --- --- Condition: y must not occur free in G, D, forall[v]{A}
-    --- i.e. x{j} must not occur free in G, D, forall[v][]
+    --- Condition: y must not occur free in G, D, forall[v]{A}
+    --- i.e. x{i + 1} must be fresh for G, D, forall[v]{A}
 
-    crl [forall-r] : (G |--{i} D, forall[v]{A})  => (G |--{i + 1} D, A[x{i + 1} / v])
-                     if ((not free(x{i + 1}, G)) and (not free(x{i + 1}, D)) and (not free(x{i + 1}, forall[v]{A}))) .
-                      --- Don't need to check condition if we increment... (need to test)
-                      --- --- Condition: y must not occur free in exists[x][A], G, D .
+    crl [forall-r] : G |--{i} (D, forall[v]{A}) => G |--{i + 1} (D, A[x{i + 1} / v])
+                     if (fresh(x{i + 1}, G) and fresh(x{i + 1}, D) and fresh(x{i + 1}, forall[v]{A})) .
 
-    crl [exists-l] : (exists[v]{A}, G |--{i} D) => (A[x{i + 1} / v], G |--{i + 1} D)
-                     if ((not free(x{i + 1}, exists[v]{A})) and (not free(x{i + 1}, G)) and (not free(x{i + 1}, D))) .
-                     --- Don't need to check condition if we increment ...?
-    ---
-    rl [exists-r] : (G |--{i} D, exists[x]{A}) =>
-                    (G |--{i} D, exists[x]{A}, A[t / x]) .
-                    --- same for forall-l about problem with
+    --- Condition: y must not occur free in exists[v]{A}, G, D
+    --- i.e. x{i + 1} must be fresh for exists[v]{A}, G, D
+
+    crl [exists-l] : (exists[v]{A}, G) |--{i} D  => (A[x{i + 1} / v], G) |--{i + 1} D
+                     if (fresh(x{i + 1}, exists[v]{A}) and fresh(x{i + 1}, G) and fresh(x{i + 1}, D)) .
+
+    --- has the same problem as forall-l as they are dual
+    rl [exists-r] : G |--{i} (D, exists[x]{A}) =>  G |--{i} (D, exists[x]{A}, A[t / x]) .
 endm
+
+eof
 
 --- =============== TESTS ===============
 
@@ -281,9 +294,7 @@ parse 'p /\ 'q, 'a |--{0} 'a .
 parse ('p \/ 'q), ('p -> 'b), ('q -> 'a), ('b -> 'a) |--{0} 'a .
 
 search [1] 'a /\ 'b |--{0} 'b /\ 'a =>* proved .
-search [1] empty |--{0} 'a <-> 'a =>* proved .
-
-eof
+search [1] emptyC |--{0} 'a <-> 'a =>* proved .
 
 --- tests for substitution
 
