@@ -1,0 +1,341 @@
+***(
+    g3c in Structural Proof Theory, Negri
+    )
+
+***( [#1]
+ First order logic / Predicate logic includes
+ - constants a1, a2, etc
+ - variables x1, x2, etc
+ - n-place functions f^n, g^n, etc
+ - and predicates P^n, Q^n for any n >= 0.
+ - the zero-place connective bot
+ - two-place connectives /\ \/ ->
+ - quantifiers forall, exists
+ Terms are denoted by t1, t2, etc and defined inductively
+)
+
+-- ============== VARIABLES ==============
+fmod VAR is
+  pr NAT .
+  sort Var .
+  op x{_} : Nat -> Var .
+endfm
+
+view Var from TRIV to VAR is
+  sort Elt to Var .
+endv
+
+fmod VARSET is
+  pr SET{Var} * (sort Set{Var} to VarSet ,
+                 sort NeSet{Var} to NeVarSet) .
+endfm
+
+--- =============== TERMS ================
+fmod TERM is
+  pr NAT .
+  pr VAR .
+  pr VARSET .
+  pr BOOL .
+
+  --- constants and variables are terms
+  sorts Constant Term .
+  subsorts Constant Var < Term .
+
+  --- constants
+  op a{_} : Nat -> Constant .
+
+  --- function arity determined by sort -
+  sorts Func1 Func2 .
+  ops f^1 g^1 h^1 : -> Func1 .
+  ops f^2 g^2 h^2 : -> Func2 .
+
+  --- applying fn to t1, ..., tn gives you a term
+  op _[_]   : Func1 Term -> Term .
+  op _[_,_] : Func2 Term Term -> Term .
+
+  vars v : Var .
+  vars i j : Nat .
+  var a : Constant .
+  var F1 : Func1 .
+  var F2 : Func2 .
+  vars t t1 t2 : Term .
+
+  --- free variables in a term
+
+  op FV : Term -> VarSet .
+  eq FV(a) = empty .
+  eq FV(v) = v .
+  eq FV(F1[t1]) = FV(t1) .
+  eq FV(F2[t1,t2]) = FV(t1), FV(t2) .
+
+  --- variable occurs free in a term
+  op free : Var Term -> Bool .
+  eq free(v, t) = not (v in FV(t)) .
+
+  --- substitution in a term
+  --- read "t1[t2/x]" as "substitute t2 for x in t1" .
+
+  op _[_/_] : Term Term Var -> Term .
+  eq a [t / v] = a .
+  ceq x{i} [t / x{j}] = x{i} if (not i == j) .
+  ceq x{i} [t / x{j}] = t if (i == j) .
+  eq (F1[t1]) [t / v] = F1[t1[t / v]] .
+  eq (F2[t1,t2]) [t / v] = F2[t1[t / v], t2[t / v]] .
+
+endfm
+
+--- =============== FORMULAS ================
+***( [#2]
+    Formulas are bot, and, or, impl, and atoms
+    PLUS: Predicates
+    PLUS: forall x, A and exists x, A .
+    )
+
+fmod FORMULA is
+     protecting TERM .
+     protecting QID .
+
+     --- formulas, atomic propositions, Pred
+
+     sorts Prop Formula .
+     subsort Qid < Prop < Formula .
+
+     --- connectives
+
+     op bot : -> Formula [ctor] .
+     op _/\_ : Formula Formula -> Formula [ctor prec 33] .
+     op _\/_ : Formula Formula -> Formula [ctor prec 33] .
+     op _->_ : Formula Formula -> Formula [ctor prec 36] .
+
+     --- derived connectives
+
+     vars A B : Formula .
+
+     op ~_ : Formula -> Formula [prec 32] .
+     eq ~ A = A -> bot .
+
+     op _<->_ : Formula Formula -> Formula [prec 45] .
+     eq A <-> B = (A -> B) /\ (B -> A) .
+
+     --- predicates, arity determined by sort - TODO: look at meta-level (just use lists)
+     sorts Pred1 Pred2 .
+     ops P^1 Q^1 R^1 : -> Pred1 .
+     ops P^2 Q^2 R^2 : -> Pred2 .
+
+    --- application of P^n to terms t1 ... tn gives a formula
+    op _[_]   : Pred1 Term -> Prop .
+    op _[_,_] : Pred2 Term Term -> Prop .
+
+    --- quantifiers
+    op forall[_]{_} : Var Formula -> Formula [ctor prec 40] .
+    op exists[_]{_} : Var Formula -> Formula [ctor prec 40] .
+
+    var P1 : Pred1 .
+    var P2 : Pred2 .
+    vars v : Var .
+    vars i j : Nat .
+    vars t t1 t2 : Term .
+
+    --- free variables in a formula
+    op FV : Formula -> VarSet .
+    eq FV(bot) = empty .
+    eq FV(P1[t1]) = FV(t1) .
+    eq FV(P2[t1,t2]) = FV(t1), FV(t2) .
+    eq FV(A /\ B) = FV(A), FV(B) .
+    eq FV(A \/ B) = FV(A), FV(B) .
+    eq FV(A -> B) = FV(A), FV(B) .
+    eq FV(forall[v]{A}) = FV(A) \ v .
+    eq FV(exists[v]{A}) = FV(A) \ v .
+
+    --- variable occurs free in a formula
+    op free : Var Formula -> Bool .
+    eq free(v, A) = not (v in FV(A)) .
+
+    --- substitution in a formula
+    --- read "A[t/v]" as "substitute t for v in A" .
+    --- variable capture still happens
+
+    op _[_/_] : Formula Term Var -> Formula .
+    eq (bot)[t / v] = bot .
+    eq (P1[t1])[t / v] = P1[t1[t / v]] .
+    eq (P2[t1,t2])[t / v] = P2[t1[t / v], t2[t / v]] .
+    eq (A /\ B)[t / v] = (A[t / v]) /\ (B[t / v]) .
+    eq (A \/ B)[t / v] = (A[t / v]) \/ (B[t / v]) .
+    eq (A -> B)[t / v] = (A[t / v]) -> (B[t / v]) .
+    ceq (forall[x{i}]{A})[t / x{j}] = forall[x{i}]{A[t / x{j}]} if (not i == j) .
+    ceq (forall[x{i}]{A})[t / x{j}] = forall[x{i}]{A} if (i == j) .
+    ceq (exists[x{i}]{A})[t / x{j}] = exists[x{i}]{A[t / x{j}]} if (not i == j) .
+    ceq (exists[x{i}]{A})[t / x{j}] = exists[x{i}]{A} if (i == j) .
+
+    --- negri says "when we do a substitution, we shall assume term t is free for x in A"
+    --- "but instead of controlling the condition for each substitution, we can use alpha-equivalence"
+    --- "e.g. renaming"
+endfm
+
+--- =============== CONTEXT ================
+--- A context is a multiset of formulas
+
+fmod CONTEXT is
+     protecting FORMULA .
+     sort NeContext Context .
+     subsort Formula < NeContext < Context .
+
+     op empty : -> Context [ctor] .
+     op _,_ : Context Context -> Context [ctor assoc comm id: empty format (d d s d)] .
+     op _,_ : NeContext Context -> NeContext [ctor assoc comm id: empty format (d d s d)] .
+     op _,_ : Context NeContext -> NeContext [ctor assoc comm id: empty format (d d s d)] .
+endfm
+
+--- =============== SEQUENT ===============
+--- A sequent in G3c, which is multisuccedent is
+--- 'G |-- D' where G and D are contexts
+
+protecting CONTEXT .
+
+sorts Sequent SSequent .
+subsort Sequent < SSequent .
+
+op _|--{_}_ : Context Nat Context -> Sequent [ctor prec 122] .
+
+view Sequent from TRIV to SEQUENT is
+  sort Elt to Sequent .
+endv
+
+pr BAG{Sequent} *
+  ( sort Bag{Sequent} to SSequent ,
+    sort NeBag{Sequent} to NESSequent ,
+    op empty to proved ) .
+
+--- =============== RULES ===============
+--- id, and-l, or-l, impl-l, bot-l, and-r, or-r, impl-r
+--- (and for FOL) forall-l, forall-r, exists-l, exists-r
+
+mod G3C is
+    protecting SEQUENT .
+    var P : Prop .        --- atomic
+    vars A B : Formula .
+    vars G D : Context .
+    var i : Nat .
+
+    --- the direction is down to up because proof search
+
+    rl [id] : P, G |--{i} D, P =>
+              proved .
+
+    rl [and-l] : A /\ B, G |--{i} D =>
+                 A, B, G |--{i} D .
+
+    rl [or-l] : A \/ B, G |--{i} D =>
+                (A, G |--{i} D) || (B, G |--{i} D) .
+
+    rl [impl-l] : A -> B, G |--{i} D =>
+                 (G |--{i} D, A) || (B, G |--{i} D) .
+
+    rl [bot-l] : (bot, G) |--{i} D =>
+                 proved .
+
+    rl [and-r] : G |--{i} A /\ B, D =>
+                (G |--{i} D, A) || (G |--{i} D, B) .
+
+    rl [or-r] : G |--{i} D, A \/ B =>
+                G |--{i} D, A , B .
+
+    rl [impl-r] : G |--{i} D, A -> B  =>
+                  G, A |--{i} D, B .
+
+    --- quantifiers
+
+    vars t : Term .
+    vars v y x : Var .
+    var j : Nat .
+
+    --- will not work since t is used before being bound
+    --- unless we put a condition using t?
+
+    rl [forall-l] : forall[v]{A}, G |--{i} D => (A[t / v]), forall[v]{A}, G |--{i} D .
+
+                  --- TODO: can write a nondeterministic rule if t,SET := possible(i)
+                  --- possible(i) gives x0 ... xi, so only for variables i created
+                  --- might do strategies
+
+    --- --- Condition: y must not occur free in G, D, forall[v]{A}
+    --- i.e. x{j} must not occur free in G, D, forall[v][]
+
+    crl [forall-r] : (G |--{i} D, forall[v]{A})  => (G |--{i + 1} D, A[x{i + 1} / v])
+                     if ((not free(x{i + 1}, G)) and (not free(x{i + 1}, D)) and (not free(x{i + 1}, forall[v]{A}))) .
+                      --- Don't need to check condition if we increment... (need to test)
+                      --- --- Condition: y must not occur free in exists[x][A], G, D .
+
+    crl [exists-l] : (exists[v]{A}, G |--{i} D) => (A[x{i + 1} / v], G |--{i + 1} D)
+                     if ((not free(x{i + 1}, exists[v]{A})) and (not free(x{i + 1}, G)) and (not free(x{i + 1}, D))) .
+                     --- Don't need to check condition if we increment ...?
+    ---
+    rl [exists-r] : (G |--{i} D, exists[x]{A}) =>
+                    (G |--{i} D, exists[x]{A}, A[t / x]) .
+                    --- same for forall-l about problem with
+endm
+
+--- =============== TESTS ===============
+
+parse 'p /\ 'q, 'a |--{0} 'a .
+parse ('p \/ 'q), ('p -> 'b), ('q -> 'a), ('b -> 'a) |--{0} 'a .
+
+search [1] 'a /\ 'b |--{0} 'b /\ 'a =>* proved .
+search [1] empty |--{0} 'a <-> 'a =>* proved .
+
+eof
+
+--- tests for substitution
+
+red a{0} [a{7} / x{0}] .
+red x{0} [a{7} / x{0}] .
+red x{1} [a{7} / x{0}] .
+
+red f^1[x{0}] [a{9} / x{0}] .
+red f^1[f^1[x{0}]] [a{9} / x{0}] .
+
+red f^2[x{0}, x{1}] [a{5} / x{0}] .
+red f^2[f^1[x{0}], f^2[x{0}, a{3}]] [f^1[a{8}] / x{0}] .
+
+--- tests for free vars
+
+red FV(a{0}) .
+
+red FV(x{0}) .
+red FV(x{7}) .
+
+red FV(f^1[x{0}]) .
+red FV(f^1[a{3}]) .
+
+red FV(f^1[f^1[x{2}]]) .
+
+red FV(f^2[x{0}, x{1}]) .
+red FV(f^2[x{0}, x{0}]) .
+red FV(f^2[a{9}, x{4}]) .
+red FV(f^2[f^1[x{0}], f^2[x{1}, a{2}]]) .
+
+red FV(f^2[f^2[x{0}, x{1}], f^1[f^2[x{1}, x{2}]]]) .
+
+--- test for free vars in a predicate
+
+red FV(bot) .
+red FV(P^1[x{0}]) .
+red FV(P^1[f^1[x{0}]]) .
+red FV(P^1[f^1[a{3}]]) .
+red FV(P^2[x{0}, x{1}]) .
+red FV(P^2[x{0}, x{0}]) .
+red FV((P^1[x{0}]) /\ (Q^1[x{1}])) .
+red FV((P^1[x{0}]) \/ (bot)) .
+red FV((P^2[x{0}, x{1}]) -> (R^1[x{2}])) .
+red FV(forall[x{0}]{P^1[x{0}]}) .
+red FV(forall[x{0}]{P^1[x{1}]}) .
+red FV(exists[x{1}]{P^2[x{0}, x{1}]}) .
+red FV(forall[x{0}]{exists[x{1}]{(P^2[x{0}, x{2}]) /\ (Q^1[x{1}])}}) .
+
+--- tests for substitution in a formula
+red (P^1[x{0}]) [a{7} / x{0}] .
+red (forall[x{0}]{P^1[x{0}]}) [a{7} / x{0}] .
+red (forall[x{0}]{P^1[x{1}]}) [a{7} / x{1}] .
+
+--- variable capture still happens
+red (forall[x{0}]{P^1[x{1}]}) [x{0} / x{1}] .
