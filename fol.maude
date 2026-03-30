@@ -77,8 +77,9 @@ fmod TERM is
 
   op _[_/_] : Term Term Var -> Term .
   eq a [t / v] = a .
+  eq x{i} [t / x{i}] = t .
   ceq x{i} [t / x{j}] = x{i} if (not i == j) .
-  ceq x{i} [t / x{j}] = t if (i == j) .
+
   eq (F1[t1]) [t / v] = F1[t1[t / v]] .
   eq (F2[t1,t2]) [t / v] = F2[t1[t / v], t2[t / v]] .
 
@@ -181,7 +182,7 @@ fmod CONTEXT is
      subsort Formula < NeContext < Context .
 
      op emptyC : -> Context [ctor] .
-     op _,_ : Context Context -> Context [ctor assoc comm id: emptyC format (d d s d)] .
+     op _,_ : Context Context -> Context [ctor assoc comm id: emptyC format (d d s d) ].
      op _,_ : NeContext Context -> NeContext [ctor assoc comm id: emptyC format (d d s d)] .
      op _,_ : Context NeContext -> NeContext [ctor assoc comm id: emptyC format (d d s d)] .
 
@@ -261,37 +262,93 @@ mod G3C is
     vars v y x : Var .
     var j : Nat .
 
-    --- will not work since t is used before being bound
-    --- unless we put a condition using t?
-
-    rl [forall-l] : (forall[v]{A}, G) |--{i} D => ((A[t / v]), forall[v]{A}, G) |--{i} D .
-
-    --- TODO: can write a nondeterministic rule if t,SET := possible(i)
-    --- possible(i) gives x0 ... xi, so only for variables i created
-    --- TODO: might do strategies
+    rl [forall-l] : (forall[v]{A}, G) |--{i} D => ((A[t / v]), forall[v]{A}, G) |--{i} D [nonexec] .
 
     --- Condition: y must not occur free in G, D, forall[v]{A}
     --- i.e. x{i + 1} must be fresh for G, D, forall[v]{A}
 
-    crl [forall-r] : G |--{i} (D, forall[v]{A}) => G |--{i + 1} (D, A[x{i + 1} / v])
+    crl [forall-r] : (G |--{i} (D, forall[v]{A})) => (G |--{i + 1} (D, (A[x{i + 1} / v])))
                      if (fresh(x{i + 1}, G) and fresh(x{i + 1}, D) and fresh(x{i + 1}, forall[v]{A})) .
 
     --- Condition: y must not occur free in exists[v]{A}, G, D
     --- i.e. x{i + 1} must be fresh for exists[v]{A}, G, D
 
-    crl [exists-l] : (exists[v]{A}, G) |--{i} D  => (A[x{i + 1} / v], G) |--{i + 1} D
+    crl [exists-l] : (exists[v]{A}, G) |--{i} D  => ((A[x{i + 1} / v]), G) |--{i + 1} D
                      if (fresh(x{i + 1}, exists[v]{A}) and fresh(x{i + 1}, G) and fresh(x{i + 1}, D)) .
 
-    --- has the same problem as forall-l as they are dual
-    rl [exists-r] : G |--{i} (D, exists[x]{A}) =>  G |--{i} (D, exists[x]{A}, A[t / x]) .
+    rl [exists-r] : G |--{i} (D, exists[x]{A}) =>  G |--{i} (D, exists[x]{A}, (A[t / x])) [nonexec] .
 endm
 
-eof
+--- ============ STRATEGIES =============
+
+smod G3C-SOLVE is
+  protecting G3C .
+
+  vars G D : Context .
+  vars i n : Nat .
+
+  strat normalize : @ Sequent .
+  strat noguess  : @ Sequent .
+  strat solve    : @ Sequent .
+  strat guess    : Nat @ Sequent .
+
+  --- non-guessing strat
+  sd normalize :=
+    (match proved ? idle : (one(noguess) ; normalize) .
+
+  sd noguess :=
+      id
+    | and-l | or-l | impl-l | bot-l
+    | and-r | or-r | impl-r
+    | forall-r | exists-l .
+
+  --- guessing over x{0} ... x{n}
+  sd guess(0) :=
+      forall-l[t <- (x{0})]
+    | exists-r[t <- (x{0})] .
+
+  sd guess(s(n)) :=
+      forall-l[t <- (x{s(n)})]
+    | exists-r[t <- (x{s(n)})]
+    | guess(n) .
+
+  --- overall search: normalize, then if not proved, guess using current index, then recurse
+  sd solve :=
+    normalize ;
+    (match proved
+       ? idle
+       : match G |--{i} D
+           ? (guess(i) ; solve)
+           : idle) .
+
+endsm
 
 --- =============== TESTS ===============
 
-parse 'p /\ 'q, 'a |--{0} 'a .
-parse ('p \/ 'q), ('p -> 'b), ('q -> 'a), ('b -> 'a) |--{0} 'a .
+eof
+
+***(
+set trace eq off .
+set trace condition off .
+set trace rl on .
+set trace on .
+)
+
+--- simple propositional tests with srew
+srew emptyC |--{0} (('a /\ 'b) -> 'a) using normalize .
+srew emptyC |--{0} (('a /\ 'b) -> ('b /\ 'a)) using normalize .
+srew emptyC |--{0} ((('a -> 'b) /\ ('b -> 'c)) -> ('a -> 'c)) using normalize .
+srew emptyC |--{0} ((('a \/ 'b) /\ ('a -> 'c) /\ ('b -> 'c)) -> 'c) using normalize .
+srew emptyC |--{0} (bot -> 'a) using normalize .
+
+--- solves this long one (halted on g3cp.maude with search command!)
+srew emptyC |--{0} ('a \/ ('b -> 'c) /\ ~ ('d /\ 'e /\ 'f) \/ ~ ('x <-> 'y)) <-> ('a \/ ('b -> 'c) /\ ~ ('d /\ 'e /\ 'f) \/ ~ ('x <-> 'y)) using normalize .
+
+--- quantifier tests (easy)
+srew emptyC |--{0} forall[x{0}]{(P^1[x{0}]) -> (P^1[x{0}])} using normalize .
+
+eof
+
 
 search [1] 'a /\ 'b |--{0} 'b /\ 'a =>* proved .
 search [1] emptyC |--{0} 'a <-> 'a =>* proved .
