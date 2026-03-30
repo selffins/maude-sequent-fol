@@ -294,7 +294,7 @@ smod G3C-SOLVE is
 
   --- non-guessing strat
   sd normalize :=
-    (match proved ? idle : (one(noguess) ; normalize) .
+    (match proved ? idle : (one(noguess) ; normalize)) .
 
   sd noguess :=
       id
@@ -302,10 +302,13 @@ smod G3C-SOLVE is
     | and-r | or-r | impl-r
     | forall-r | exists-l .
 
-  --- guessing over x{0} ... x{n}
+  strat test : @ Sequent .
+  sd test := exists-r[t <- x{0}] .
+
+  --- guessing for forall-l and exists-r over x{1} ... x{n}
   sd guess(0) :=
-      forall-l[t <- (x{0})]
-    | exists-r[t <- (x{0})] .
+      forall-l[t <- (x{1})]
+    | exists-r[t <- (x{1})] .
 
   sd guess(s(n)) :=
       forall-l[t <- (x{s(n)})]
