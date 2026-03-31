@@ -204,6 +204,7 @@ endfm
 --- =============== SEQUENT ===============
 --- A sequent in G3c, which is multisuccedent is
 --- 'G |-- D' where G and D are contexts
+--- we augment the sequent |--{i} to indicate variables being used, for freshness conditions
 
 fmod SEQUENT is
   protecting CONTEXT .
@@ -211,7 +212,7 @@ fmod SEQUENT is
   sorts Sequent SSequent .
   subsort Sequent < SSequent .
 
-  op proved : -> SSequent [ctor] .
+  op proved : -> Sequent [ctor] .
   op _|--{_}_ : Context Nat Context -> Sequent [ctor prec 122] .
 
   op _||_ : SSequent SSequent -> SSequent [ctor assoc comm id: proved] .
@@ -219,6 +220,15 @@ fmod SEQUENT is
   --- idempotency to make this a set
   var S : Sequent .
   eq S || S = S .
+
+  --- extract variable index of a sequent
+  vars G D : Context .
+  var i : Nat .
+
+  op idx : Sequent -> Nat .
+  eq idx(proved) = 0 .
+  eq idx((G |--{i} D)) = i .
+
 endfm
 
 --- =============== RULES ===============
@@ -258,6 +268,8 @@ mod G3C is
 
     --- quantifiers
 
+    --- notice how forall-l and exist-r are kept
+
     vars t : Term .
     vars v y x : Var .
     var j : Nat .
@@ -286,15 +298,17 @@ smod G3C-SOLVE is
 
   vars G D : Context .
   vars i n : Nat .
+  var t : Term .
+  var S : Sequent .
 
   strat normalize : @ Sequent .
   strat noguess  : @ Sequent .
   strat solve    : @ Sequent .
   strat guess    : Nat @ Sequent .
 
-  --- non-guessing strat
+  --- non-guessing strat (okay because invertible, not sure about forall-r and exists-l)
   sd normalize :=
-    (match proved ? idle : (one(noguess) ; normalize)) .
+     (match proved ? idle : (one(noguess) ; normalize) or-else idle) .
 
   sd noguess :=
       id
@@ -302,13 +316,10 @@ smod G3C-SOLVE is
     | and-r | or-r | impl-r
     | forall-r | exists-l .
 
-  strat test : @ Sequent .
-  sd test := exists-r[t <- x{0}] .
-
-  --- guessing for forall-l and exists-r over x{1} ... x{n}
+  --- guessing for forall-l and exists-r over x{0} ... x{n}
   sd guess(0) :=
-      forall-l[t <- (x{1})]
-    | exists-r[t <- (x{1})] .
+      forall-l[t <- (x{0})]
+    | exists-r[t <- (x{0})] .
 
   sd guess(s(n)) :=
       forall-l[t <- (x{s(n)})]
@@ -317,25 +328,23 @@ smod G3C-SOLVE is
 
   --- overall search: normalize, then if not proved, guess using current index, then recurse
   sd solve :=
-    normalize ;
-    (match proved
-       ? idle
-       : match G |--{i} D
-           ? (guess(i) ; solve)
-           : idle) .
-
+  normalize ;
+  (match proved
+  ? idle
+  : matchrew S:Sequent by
+  S using (guess(idx(S)) ; solve)) .
 endsm
 
 --- =============== TESTS ===============
 
 eof
-
-***(
+(*
 set trace eq off .
 set trace condition off .
+set trace sd off .
 set trace rl on .
 set trace on .
-)
+*)
 
 --- simple propositional tests with srew
 srew emptyC |--{0} (('a /\ 'b) -> 'a) using normalize .
@@ -349,9 +358,15 @@ srew emptyC |--{0} ('a \/ ('b -> 'c) /\ ~ ('d /\ 'e /\ 'f) \/ ~ ('x <-> 'y)) <->
 
 --- quantifier tests (easy)
 srew emptyC |--{0} forall[x{0}]{(P^1[x{0}]) -> (P^1[x{0}])} using normalize .
+srew forall[x{0}]{P^1[x{0}]} |--{0} P^1[x{0}] using solve .
+srew P^1[x{0}] |--{0} exists[x{1}]{P^1[x{1}]} using solve .
 
+--- can solve it once, but loops afterwards
+srew [1] forall[x{0}]{(P^1[x{0}])} |--{1} exists[x{1}]{(P^1[x{1}])} using solve .
+srew emptyC |--{0} forall[x{0}]{(P^1[x{0}]) -> (P^1[x{0}])} using solve .
 eof
 
+srew forall[x{0}]{(P^1[x{0}]) /\ (Q^1[x{0}])} |--{0} (P^1[x{0}]) using solve .
 
 search [1] 'a /\ 'b |--{0} 'b /\ 'a =>* proved .
 search [1] emptyC |--{0} 'a <-> 'a =>* proved .
